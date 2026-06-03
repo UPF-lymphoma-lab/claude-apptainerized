@@ -98,15 +98,14 @@ SESSION_NAME=$(openssl rand -hex 4)
 SESSIONS_FILE="$HOME/.claude/workspace-sessions.json"
 
 python3 - <<PYEOF
-import json, os
+import json, os, fcntl
 path = "$SESSIONS_FILE"
+lock = open(path + ".lock", "w")
+fcntl.flock(lock, fcntl.LOCK_EX)
 data = json.load(open(path)) if os.path.exists(path) else {}
 data["$SESSION_NAME"] = "$WORKSPACE_ROOT"
 json.dump(data, open(path, "w"), indent=2)
 PYEOF
-
-printf 'Session: %s\nWorkspace root (only paths under this are mounted): %s\n' \
-    "$SESSION_NAME" "$WORKSPACE_ROOT" > "$HOME/.claude/workspace-root.md"
 # ============================================
 # SESSION REGISTRATION (END)
 # ============================================
@@ -117,8 +116,10 @@ printf 'Session: %s\nWorkspace root (only paths under this are mounted): %s\n' \
 # SESSION CLEANUP
 # ============================================
 python3 - <<PYEOF
-import json, os
+import json, os, fcntl
 path = "$SESSIONS_FILE"
+lock = open(path + ".lock", "w")
+fcntl.flock(lock, fcntl.LOCK_EX)
 if os.path.exists(path):
     data = json.load(open(path))
     data.pop("$SESSION_NAME", None)
