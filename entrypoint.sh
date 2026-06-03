@@ -58,6 +58,8 @@ if [ ! -f "$HOME/.profile" ]; then
     cp /etc/skel/.profile "$HOME/.profile" 2>/dev/null || true
     echo "Created ~/.profile"
 fi
+
+mkdir -p "$HOME/.claude"
 # ============================================
 # DOTFILE BOOTSTRAP (END)
 # ============================================
@@ -89,4 +91,38 @@ if [ ! -f "$HOME/.local/bin/claude" ]; then
 fi
 export PATH="$HOME/.local/bin:$PATH"
 
-exec "$@"
+# ============================================
+# SESSION REGISTRATION (START)
+# ============================================
+SESSION_NAME=$(openssl rand -hex 4)
+SESSIONS_FILE="$HOME/.claude/workspace-sessions.json"
+
+python3 - <<PYEOF
+import json, os
+path = "$SESSIONS_FILE"
+data = json.load(open(path)) if os.path.exists(path) else {}
+data["$SESSION_NAME"] = "$WORKSPACE_ROOT"
+json.dump(data, open(path, "w"), indent=2)
+PYEOF
+
+printf 'Session: %s\nWorkspace root (only paths under this are mounted): %s\n' \
+    "$SESSION_NAME" "$WORKSPACE_ROOT" > "$HOME/.claude/workspace-root.md"
+# ============================================
+# SESSION REGISTRATION (END)
+# ============================================
+
+"$@"; EXIT_CODE=$?
+
+# ============================================
+# SESSION CLEANUP
+# ============================================
+python3 - <<PYEOF
+import json, os
+path = "$SESSIONS_FILE"
+if os.path.exists(path):
+    data = json.load(open(path))
+    data.pop("$SESSION_NAME", None)
+    json.dump(data, open(path, "w"), indent=2)
+PYEOF
+
+exit $EXIT_CODE
