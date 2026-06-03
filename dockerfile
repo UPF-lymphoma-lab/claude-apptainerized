@@ -145,18 +145,5 @@ RUN curl -fsSL https://claude.ai/install.sh | bash \
 USER root
 RUN cp /home/claude/.local/bin/claude /usr/local/bin/claude
 
-WORKDIR /workspace
-
 ENTRYPOINT ["/opt/entrypoint.sh"]
 CMD ["claude"]
-
-# Build:
-# docker build -t claude-code-main .
-#
-# Run (UID/GID mapped automatically):
-# docker run -it --rm \
-#   -e HOST_WORKSPACE=$(pwd) \
-#   -e USER_ID=$(id -u) -e GROUP_ID=$(id -g) \
-#   -v $(pwd):/workspace \
-#   -v ~/claude/claude-home:/home/claude \
-#   claude-code-main
