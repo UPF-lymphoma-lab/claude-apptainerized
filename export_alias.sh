@@ -7,20 +7,30 @@ set -e
 #   --group-add 1001 — grants lab group access
 #   $(pwd) expanded at call time because of single quotes
 #   mount and workdir use the literal host path so container paths match host paths
+#   optional $1 — second host path, mounted read-write at the same path in the container
 
-# Persist the alias directly in ~/.bashrc
+# Persist the function directly in ~/.bashrc
 TMPFILE=$(mktemp)
 cat > "$TMPFILE" << 'EOF'
 # BEGIN claude-code alias
-alias claude='docker run -it --rm \
-  -e WORKSPACE_ROOT=$(pwd) \
-  -e USER_ID=$(id -u) \
-  -e GROUP_ID=$(id -g) \
-  --group-add 1001 \
-  -v $(pwd):$(pwd) \
-  -w $(pwd) \
-  -v ~/claude/claude-home:/home/claude \
-  claude-code-main'
+claude() {
+  local extra_mount=() extra_env=()
+  if [ -n "$1" ]; then
+    extra_mount=(-v "$1:$1")
+    extra_env=(-e SECONDARY_WORKSPACE="$1")
+  fi
+  docker run -it --rm \
+    -e WORKSPACE_ROOT="$(pwd)" \
+    -e USER_ID="$(id -u)" \
+    -e GROUP_ID="$(id -g)" \
+    --group-add 1001 \
+    -v "$(pwd):$(pwd)" \
+    -w "$(pwd)" \
+    -v ~/claude/claude-home:/home/claude \
+    "${extra_mount[@]}" \
+    "${extra_env[@]}" \
+    claude-code-main
+}
 # END claude-code alias
 EOF
 
