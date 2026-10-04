@@ -23,7 +23,7 @@ claude() {
     -e WORKSPACE_ROOT="$(pwd)" \
     -e USER_ID="$(id -u)" \
     -e GROUP_ID="$(id -g)" \
-    --group-add 1001 \
+    -e EXTRA_GROUPS=1001 \
     -v "$(pwd):$(pwd)" \
     -w "$(pwd)" \
     -v ~/claude/claude-home:/home/claude \
