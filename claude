@@ -10,11 +10,13 @@ CLAUDE_HOME_HOST="${CLAUDE_HOME_HOST:-$HOME/claude/claude-home}"
 
 die() { echo "claude: $*" >&2; exit 1; }
 
-# Refuses the home directory, its parents, and shallow paths like /mnt/data
+# Refuses the home directory, its parents, system folders and shared data roots
 check_dir() {
   local d="$1"
-  [ "$(tr -cd / <<<"$d" | wc -c)" -ge 3 ] \
-    || die "refusing to give Claude access to $d (too broad). cd into a project folder first."
+  case "$d" in
+    /|/bin|/boot|/dev|/etc|/home|/lib|/lib64|/media|/mnt|/opt|/proc|/root|/run|/sbin|/srv|/sys|/tmp|/usr|/var|/mnt/data|/mnt/scratch)
+      die "refusing to give Claude access to $d (too broad). cd into a project folder first." ;;
+  esac
   case "$HOME/" in
     "$d"/*) die "refusing to give Claude access to $d (contains your home directory). cd into a project folder first." ;;
   esac
