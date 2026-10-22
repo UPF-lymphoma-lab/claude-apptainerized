@@ -1,0 +1,98 @@
+Bootstrap: docker
+From: ubuntu:24.04
+
+%arguments
+    UBUNTU_MIRROR=http://archive.ubuntu.com/ubuntu
+
+%labels
+    Description Base for the Claude Code image: R, Python, bioinformatics tools, micromamba
+
+%post
+    set -eux
+    export DEBIAN_FRONTEND=noninteractive
+
+    # ============================================
+    # CORE SYSTEM PACKAGES
+    # ============================================
+    sed -i "s|http://archive.ubuntu.com/ubuntu|{{ UBUNTU_MIRROR }}|g" /etc/apt/sources.list.d/ubuntu.sources
+    apt-get update
+    apt-get install -y --no-install-recommends \
+        ca-certificates curl wget gnupg git less vim nano htop tree \
+        unzip zip bzip2 jq ripgrep locales bubblewrap \
+        build-essential cmake pkg-config \
+        pandoc poppler-utils \
+        python3 python3-pip python3-venv python3-dev \
+        socat default-jdk
+    locale-gen en_US.UTF-8
+
+    # Headers for compiling R packages from source into the user library
+    apt-get install -y --no-install-recommends \
+        libcurl4-openssl-dev libssl-dev libxml2-dev libfontconfig1-dev \
+        libharfbuzz-dev libfribidi-dev libfreetype6-dev libpng-dev libtiff5-dev \
+        libjpeg-dev libhdf5-dev libglpk-dev libcairo2-dev libxt-dev libgsl-dev \
+        libfftw3-dev libgdal-dev libudunits2-dev libmagick++-dev libuv1-dev
+
+    # ============================================
+    # R (CRAN) + r2u binary CRAN packages
+    # ============================================
+    wget -qO- https://cloud.r-project.org/bin/linux/ubuntu/marutter_pubkey.asc \
+        > /etc/apt/trusted.gpg.d/cran_ubuntu_key.asc
+    echo "deb [arch=amd64] https://cloud.r-project.org/bin/linux/ubuntu noble-cran40/" \
+        > /etc/apt/sources.list.d/cran_r.list
+    wget -qO- https://eddelbuettel.github.io/r2u/assets/dirk_eddelbuettel_key.asc \
+        > /etc/apt/trusted.gpg.d/cranapt_key.asc
+    echo "deb [arch=amd64] https://r2u.stat.illinois.edu/ubuntu noble main" \
+        > /etc/apt/sources.list.d/cranapt.list
+    printf 'Package: *\nPin: release o=CRAN-Apt Project\nPin: release l=CRAN-Apt Packages\nPin-Priority: 700\n' \
+        > /etc/apt/preferences.d/99cranapt
+    apt-get update
+    apt-get install -y --no-install-recommends \
+        r-base-core r-base-dev \
+        r-cran-tidyverse r-cran-data.table r-cran-remotes r-cran-biocmanager \
+        r-cran-readxl r-cran-writexl r-cran-openxlsx \
+        r-cran-rmarkdown r-cran-knitr \
+        r-cran-qs2 r-cran-hdf5r r-cran-seuratobject r-cran-seurat
+
+    # ============================================
+    # Bioinformatics command-line tools
+    # ============================================
+    apt-get install -y --no-install-recommends \
+        samtools bcftools bedtools tabix
+    wget -qO /usr/local/bin/mosdepth \
+        https://github.com/brentp/mosdepth/releases/download/v0.3.12/mosdepth
+    chmod +x /usr/local/bin/mosdepth
+
+    # ============================================
+    # Node.js, GitHub CLI
+    # ============================================
+    curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
+    install -d -m 755 /etc/apt/keyrings
+    wget -qO /etc/apt/keyrings/githubcli-archive-keyring.gpg \
+        https://cli.github.com/packages/githubcli-archive-keyring.gpg
+    chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg
+    echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+        > /etc/apt/sources.list.d/github-cli.list
+    apt-get update
+    apt-get install -y --no-install-recommends nodejs gh
+
+    apt-get clean
+    rm -rf /var/lib/apt/lists/*
+
+    # ============================================
+    # Python packages, micromamba
+    # ============================================
+    pip3 install --no-cache-dir --break-system-packages --ignore-installed \
+        numpy pandas scipy matplotlib seaborn openpyxl \
+        pysam h5py anndata
+    curl -fsSL https://micro.mamba.pm/api/micromamba/linux-64/latest \
+        | tar -xj -C /usr/local bin/micromamba
+
+%test
+    bwrap --version
+    micromamba --version
+    samtools --version | head -1
+    bcftools --version | head -1
+    bedtools --version
+    mosdepth --version
+    Rscript -e 'suppressMessages({library(tidyverse); library(qs2); library(Seurat)})'
+    python3 -c 'import pandas, openpyxl, pysam, anndata'

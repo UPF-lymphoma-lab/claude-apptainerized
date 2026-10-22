@@ -1,0 +1,7 @@
+#!/bin/sh
+# Uses the host mamba installation when the launcher mounted one, otherwise the bundled micromamba
+if [ -x "${MAMBA_ROOT_PREFIX:-}/bin/mamba" ]; then
+    exec "$MAMBA_ROOT_PREFIX/bin/mamba" "$@"
+fi
+echo "mamba: no host mamba installation mounted; using the container's micromamba (environments work only inside the container)" >&2
+exec micromamba "$@"
