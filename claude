@@ -1,0 +1,98 @@
+#!/bin/bash
+# Runs Claude Code in an Apptainer container that sees only the current
+# directory, an optional second directory, and a persistent per-user home.
+#
+#   claude [SECOND_DIR] [CLAUDE ARGS...]
+set -euo pipefail
+
+SIF="${CLAUDE_SIF:-/opt/claude-code/claude.sif}"
+CLAUDE_HOME_HOST="${CLAUDE_HOME_HOST:-$HOME/claude/claude-home}"
+
+die() { echo "claude: $*" >&2; exit 1; }
+
+# Refuses the home directory, its parents, and shallow paths like /mnt/data
+check_dir() {
+  local d="$1"
+  [ "$(tr -cd / <<<"$d" | wc -c)" -ge 3 ] \
+    || die "refusing to give Claude access to $d (too broad). cd into a project folder first."
+  case "$HOME/" in
+    "$d"/*) die "refusing to give Claude access to $d (contains your home directory). cd into a project folder first." ;;
+  esac
+}
+
+[ -r "$SIF" ] || die "container image $SIF not found or not readable"
+
+mkdir -p "$CLAUDE_HOME_HOST"
+chmod 700 "$CLAUDE_HOME_HOST"
+
+binds=()
+claude_args=()
+env_args=(--env "TERM=${TERM:-xterm-256color}")
+pwd_in="/home/claude"
+
+case "${1:-}" in
+  # Account commands need no project folder
+  update|doctor|setup-token|--version|-v|-V|--help|-h) ;;
+  *)
+    project="$(realpath -e "$PWD")"
+    check_dir "$project"
+    binds+=(--bind "$project")
+    pwd_in="$project"
+    env_args+=(--env "WORKSPACE_ROOT=$project")
+    if [ "$#" -gt 0 ] && [[ "$1" != -* ]] && [ -d "$1" ]; then
+      second="$(realpath -e "$1")"
+      shift
+      if [ "$second" != "$project" ]; then
+        check_dir "$second"
+        binds+=(--bind "$second")
+        claude_args+=(--add-dir "$second")
+        env_args+=(--env "SECONDARY_WORKSPACE=$second")
+      fi
+    fi
+    ;;
+esac
+
+for v in COLORTERM http_proxy https_proxy no_proxy HTTP_PROXY HTTPS_PROXY NO_PROXY; do
+  [ -n "${!v:-}" ] && env_args+=(--env "$v=${!v}")
+done
+
+# Private /tmp for this session, removed on exit
+workdir="$(mktemp -d "${TMPDIR:-/tmp}/claude-$USER.XXXXXX")"
+trap 'rm -rf "$workdir"' EXIT
+
+# Host mamba installation, mounted at its host path so environments work in both places
+mamba_root=""
+for d in "${CLAUDE_MAMBA_ROOT:-}" "${MAMBA_ROOT_PREFIX:-}" "${CONDA_EXE:+$(dirname "$(dirname "$CONDA_EXE")")}" \
+         /opt/miniforge3 "$HOME/miniforge3" "$HOME/mambaforge" "$HOME/miniconda3"; do
+  if [ -n "$d" ] && [ -x "$d/bin/mamba" ]; then mamba_root="$(realpath -e "$d")"; break; fi
+done
+if [ -n "$mamba_root" ]; then
+  binds+=(--bind "$mamba_root")
+  env_args+=(--env "MAMBA_ROOT_PREFIX=$mamba_root")
+  # User's environment and package folders: from ~/.condarc (with ~ expanded) plus mamba's defaults
+  mamba_dirs=("$HOME/.local/share/mamba/envs" "$HOME/.local/share/mamba/pkgs" "$HOME/.conda/envs" "$HOME/.conda/pkgs")
+  if [ -f "$HOME/.condarc" ]; then
+    sed "s#~/#$HOME/#g" "$HOME/.condarc" > "$workdir/condarc"
+    binds+=(--bind "$workdir/condarc:/opt/claude-config/condarc:ro")
+    env_args+=(--env "CONDARC=/opt/claude-config/condarc")
+    while IFS= read -r p; do mamba_dirs+=("$p"); done \
+      < <(sed -nE 's#^[[:space:]]*-[[:space:]]*(/[^[:space:]#]*).*#\1#p' "$workdir/condarc")
+  fi
+  declare -A seen=()
+  for p in "${mamba_dirs[@]}"; do
+    p="${p%/}"
+    [ -d "$p" ] && [[ "$p" != "$mamba_root"* ]] && [ -z "${seen[$p]:-}" ] && binds+=(--bind "$p") && seen[$p]=1
+  done
+fi
+
+umask 002
+apptainer run \
+  --containall \
+  --workdir "$workdir" \
+  --home "$CLAUDE_HOME_HOST:/home/claude" \
+  --pwd "$pwd_in" \
+  --bind /dev/full \
+  "${binds[@]}" \
+  "${env_args[@]}" \
+  "$SIF" \
+  "${claude_args[@]}" "$@"

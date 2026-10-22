@@ -1,0 +1,44 @@
+Bootstrap: localimage
+From: base.sif
+
+%labels
+    Description Claude Code with R, Python and bioinformatics tools for lab projects
+
+%files
+    config/CLAUDE.md /etc/claude-code/CLAUDE.md
+    config/mamba /usr/local/bin/mamba
+
+%environment
+    export LANG=en_US.UTF-8
+    export LC_ALL=en_US.UTF-8
+    export R_LIBS_USER="$HOME/R/library"
+    export MAMBA_ROOT_PREFIX="${MAMBA_ROOT_PREFIX:-$HOME/micromamba}"
+    export PATH="$HOME/.local/bin:$PATH"
+
+%post
+    set -eux
+    chmod 755 /usr/local/bin/mamba
+    chmod 644 /etc/claude-code/CLAUDE.md
+    mkdir -p /opt/claude-config
+    touch /opt/claude-config/condarc
+
+%runscript
+    # First-run setup of the persistent home
+    mkdir -p "$HOME/.claude" "$HOME/R/library"
+    [ -f "$HOME/.bashrc" ] || cp /etc/skel/.bashrc "$HOME/.bashrc"
+    [ -f "$HOME/.profile" ] || cp /etc/skel/.profile "$HOME/.profile"
+
+    # Self-updating Claude Code in the persistent home
+    if [ ! -x "$HOME/.local/bin/claude" ]; then
+        echo "First run: installing Claude Code into your Claude home (it keeps itself updated from there)..."
+        curl -fsSL https://claude.ai/install.sh | bash
+    fi
+    [ -x "$HOME/.local/bin/claude" ] || { echo "Claude Code install failed; check the network and try again" >&2; exit 1; }
+
+    # Private mount propagation in a nested namespace clears Apptainer's unbindable
+    # root, which Claude Code's optional bubblewrap sandbox needs to bind-mount
+    exec unshare --user --map-current-user --mount --propagation private "$HOME/.local/bin/claude" "$@"
+
+%test
+    mamba --version
+    test -f /etc/claude-code/CLAUDE.md
