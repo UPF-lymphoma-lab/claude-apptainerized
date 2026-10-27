@@ -14,7 +14,7 @@ claude --resume                      # other arguments go to Claude Code
 
 On the first run Claude Code is installed into the home folder and asks you to sign in: open the link it prints in any browser and paste the code back.
 
-`claude` refuses to start in your home folder, its parents, or shallow paths like `/mnt/data`.
+`claude` refuses to start in parents of your home folder, system folders, or shared roots like `/mnt/data`.
 
 Each session is a container that exists only while Claude Code runs: on exit, everything running inside it stops. Conversations are kept, so `claude --resume` (from the same project folder) continues one.
 

@@ -10,7 +10,7 @@ CLAUDE_HOME_HOST="${CLAUDE_HOME_HOST:-$HOME/claude/claude-home}"
 
 die() { echo "claude: $*" >&2; exit 1; }
 
-# Refuses the home directory, its parents, system folders and shared data roots
+# Refuses parents of the home directory, system folders and shared data roots
 check_dir() {
   local d="$1"
   case "$d" in
@@ -18,7 +18,7 @@ check_dir() {
       die "refusing to give Claude access to $d (too broad). cd into a project folder first." ;;
   esac
   case "$HOME/" in
-    "$d"/*) die "refusing to give Claude access to $d (contains your home directory). cd into a project folder first." ;;
+    "$d"/?*) die "refusing to give Claude access to $d (contains your home directory). cd into a project folder first." ;;
   esac
 }
 
